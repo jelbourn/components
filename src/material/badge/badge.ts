@@ -6,7 +6,6 @@
  * found in the LICENSE file at https://angular.io/license
  */
 
-import {AriaDescriber} from '@angular/cdk/a11y';
 import {BooleanInput, coerceBooleanProperty} from '@angular/cdk/coercion';
 import {
   Directive,
@@ -17,7 +16,6 @@ import {
   OnChanges,
   OnDestroy,
   Optional,
-  Renderer2,
   SimpleChanges,
 } from '@angular/core';
 import {CanDisable, mixinDisabled, ThemePalette} from '@angular/material/core';
@@ -44,6 +42,7 @@ export type MatBadgeSize = 'small' | 'medium' | 'large';
   inputs: ['disabled: matBadgeDisabled'],
   host: {
     'class': 'mat-badge',
+    '[attr.aria-describedby]': 'description || content || null',
     '[class.mat-badge-overlap]': 'overlap',
     '[class.mat-badge-above]': 'isAbove()',
     '[class.mat-badge-below]': '!isAbove()',
@@ -90,16 +89,7 @@ export class MatBadge extends _MatBadgeBase implements OnDestroy, OnChanges, Can
   @Input('matBadgeDescription')
   get description(): string { return this._description; }
   set description(newDescription: string) {
-    if (newDescription !== this._description) {
-      const badgeElement = this._badgeElement;
-      this._updateHostAriaDescription(newDescription, this._description);
-      this._description = newDescription;
-
-      if (badgeElement) {
-        newDescription ? badgeElement.setAttribute('aria-label', newDescription) :
-            badgeElement.removeAttribute('aria-label');
-      }
-    }
+    this._description = newDescription;
   }
   private _description: string;
 
@@ -117,13 +107,12 @@ export class MatBadge extends _MatBadgeBase implements OnDestroy, OnChanges, Can
   /** Unique id for the badge */
   _id: number = nextId++;
 
-  private _badgeElement: HTMLElement | undefined;
+  /** Visible badge element. */
+  private _badgeElement: HTMLElement = this._createBadgeElement();
 
   constructor(
       private _ngZone: NgZone,
       private _elementRef: ElementRef<HTMLElement>,
-      private _ariaDescriber: AriaDescriber,
-      private _renderer: Renderer2,
       @Optional() @Inject(ANIMATION_MODULE_TYPE) private _animationMode?: string) {
       super();
 
@@ -147,66 +136,37 @@ export class MatBadge extends _MatBadgeBase implements OnDestroy, OnChanges, Can
 
   ngOnChanges(changes: SimpleChanges) {
     const contentChange = changes['content'];
-
     if (contentChange) {
-      const value = contentChange.currentValue;
-      this._hasContent = value != null && `${value}`.trim().length > 0;
-      this._updateTextContent();
+      this._badgeElement.textContent = contentChange.currentValue;
+      this._hasContent = !!`${contentChange.currentValue ?? ''}`.trim();
     }
   }
 
   ngOnDestroy() {
-    const badgeElement = this._badgeElement;
-
-    if (badgeElement) {
-      if (this.description) {
-        this._ariaDescriber.removeDescription(badgeElement, this.description);
-      }
-
-      // When creating a badge through the Renderer, Angular will keep it in an index.
-      // We have to destroy it ourselves, otherwise it'll be retained in memory.
-      if (this._renderer.destroyNode) {
-        this._renderer.destroyNode(badgeElement);
-      }
-    }
-  }
-
-  /**
-   * Gets the element into which the badge's content is being rendered.
-   * Undefined if the element hasn't been created (e.g. if the badge doesn't have content).
-   */
-  getBadgeElement(): HTMLElement | undefined {
-    return this._badgeElement;
-  }
-
-  /** Injects a span element into the DOM with the content. */
-  private _updateTextContent(): HTMLSpanElement {
-    if (!this._badgeElement) {
-      this._badgeElement = this._createBadgeElement();
-    } else {
-      this._badgeElement.textContent = this._stringifyContent();
-    }
-    return this._badgeElement;
+    this._badgeElement.remove();
   }
 
   /** Creates the badge element */
   private _createBadgeElement(): HTMLElement {
-    const badgeElement = this._renderer.createElement('span');
+    const badgeElement = document.createElement('span');
     const activeClass = 'mat-badge-active';
     const contentClass = 'mat-badge-content';
 
     // Clear any existing badges which may have persisted from a server-side render.
     this._clearExistingBadges(contentClass);
     badgeElement.setAttribute('id', `mat-badge-content-${this._id}`);
+
+    // The badge is aria-hidden because we don't want it to appear in the page's navigation
+    // flow. Instead, we use the badge to describe the decorated element with aria-describedby.
+    badgeElement.setAttribute('aria-hidden', 'true');
     badgeElement.classList.add(contentClass);
-    badgeElement.textContent = this._stringifyContent();
+
+    // While `this.content` can be a number or null, setting these directly to
+    // textContent automatically coerces the value to the string we want.
+    badgeElement.textContent = this.content as string;
 
     if (this._animationMode === 'NoopAnimations') {
       badgeElement.classList.add('_mat-animation-noopable');
-    }
-
-    if (this.description) {
-      badgeElement.setAttribute('aria-label', this.description);
     }
 
     this._elementRef.nativeElement.appendChild(badgeElement);
@@ -225,30 +185,12 @@ export class MatBadge extends _MatBadgeBase implements OnDestroy, OnChanges, Can
     return badgeElement;
   }
 
-  /** Sets the aria-label property on the element */
-  private _updateHostAriaDescription(newDescription: string, oldDescription: string): void {
-    // ensure content available before setting label
-    const content = this._updateTextContent();
-
-    if (oldDescription) {
-      this._ariaDescriber.removeDescription(content, oldDescription);
-    }
-
-    if (newDescription) {
-      this._ariaDescriber.describe(content, newDescription);
-    }
-  }
-
   /** Adds css theme class given the color to the component host */
   private _setColor(colorPalette: ThemePalette) {
-    if (colorPalette !== this._color) {
-      const classList = this._elementRef.nativeElement.classList;
-      if (this._color) {
-        classList.remove(`mat-badge-${this._color}`);
-      }
-      if (colorPalette) {
-        classList.add(`mat-badge-${colorPalette}`);
-      }
+    const classList = this._elementRef.nativeElement.classList;
+    classList.remove(`mat-badge-${this._color}`);
+    if (colorPalette) {
+      classList.add(`mat-badge-${colorPalette}`);
     }
   }
 
@@ -265,14 +207,6 @@ export class MatBadge extends _MatBadgeBase implements OnDestroy, OnChanges, Can
         element.removeChild(currentChild);
       }
     }
-  }
-
-  /** Gets the string representation of the badge content. */
-  private _stringifyContent(): string {
-    // Convert null and undefined to an empty string which is consistent
-    // with how Angular handles them in inside template interpolations.
-    const content = this.content;
-    return content == null ? '' : `${content}`;
   }
 
   static ngAcceptInputType_disabled: BooleanInput;
