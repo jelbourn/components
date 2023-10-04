@@ -75,7 +75,7 @@
     "@angular-devkit/core": "^17.0.0-next.6",
     "@angular-devkit/schematics": "^17.0.0-next.6",
     "@angular/bazel": "https://github.com/angular/bazel-builds.git#bac9c1abe1e6ac1801fbbccb53353a1ed7126469",
-    "@angular/build-tooling": "https://github.com/angular/dev-infra-private-build-tooling-builds.git#22a9a75114d5e80907054f01b9fa360972de1c05",
+    "@angular/build-tooling": "https://github.com/angular/dev-infra-private-build-tooling-builds.git#95129efeac23c4f486d6ebecbcec94ef787bc01f",
     "@angular/cli": "^17.0.0-next.6",
     "@angular/compiler-cli": "^17.0.0-next.6",
     "@angular/localize": "^17.0.0-next.6",
